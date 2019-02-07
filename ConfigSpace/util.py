@@ -29,6 +29,7 @@
 
 from collections import deque
 import copy
+import math
 from typing import Union, List, Dict, Generator
 
 import numpy as np  # type: ignore
@@ -100,14 +101,20 @@ def get_one_exchange_neighbourhood(
 
     n_neighbors_per_hp = {}
     active_hyperparameter_indices = []
+    uniform_int = dict()
+    uniform_float = dict()
     for hp in configuration.configuration_space.get_hyperparameters():
         hp_value = configuration.get(hp.name)
+
+        uniform_int[hp.name] = isinstance(hp, UniformIntegerHyperparameter)
+        uniform_float[hp.name] = isinstance(hp, UniformFloatHyperparameter)
+
         if hp_value is None:
             continue
         else:
             n_neighbors_tmp = hp.get_num_neighbors(configuration.get(hp.name))
             if n_neighbors_tmp > 0:
-                if isinstance(hp, UniformIntegerHyperparameter):
+                if uniform_int[hp.name]:
                     n_neighbors_tmp = min(n_neighbors_tmp, num_neighbors)
                 elif np.isinf(n_neighbors_tmp):
                     n_neighbors_tmp = num_neighbors
@@ -144,14 +151,19 @@ def get_one_exchange_neighbourhood(
                     break
 
                 if hp_name not in finite_neighbors_stack:
-                    if isinstance(hp, (UniformIntegerHyperparameter, UniformFloatHyperparameter)):
+                    if math.isinf(num_neighbors_for_hp):
+                        if uniform_float[hp_name]:
+                            neighbors = hp.get_neighbors(value, random,
+                                                         number=num_neighbors,
+                                                         std=stdev)
+                        else:
+                            neighbors = hp.get_neighbors(
+                                value, random, number=num_neighbors,
+                            )
+                    elif uniform_int[hp_name]:
                         neighbors = hp.get_neighbors(value, random,
                                                      number=num_neighbors, std=stdev)
                         random.shuffle(neighbors)
-                    elif np.isinf(num_neighbors_for_hp):
-                        neighbors = hp.get_neighbors(
-                            value, random, number=num_neighbors,
-                        )
                     else:
                         neighbors = hp.get_neighbors(value, random)
                         random.shuffle(neighbors)
