@@ -123,8 +123,6 @@ def get_one_exchange_neighbourhood(
 
     # Setting up some variables
     array = configuration.get_array()  # type: np.ndarray
-    neighbor = 0  # type: float
-    iteration = 0  # type: int
 
     while len(hyperparameters_used) < number_of_usable_hyperparameters:
         index = random.choice(active_hyperparameter_indices)  # type: int
@@ -134,48 +132,34 @@ def get_one_exchange_neighbourhood(
 
         else:
             neighbourhood = []  # type: List
-            number_of_sampled_neighbors = 0  # type: int
-
             value = array[index]  # type: float
 
             iteration = 0
             hp = configuration_space.get_hyperparameter(hp_name)  # type: Hyperparameter
             num_neighbors_for_hp = hp.get_num_neighbors(configuration.get(hp_name))
             while True:
-                # Obtain neigbors differently for different possible numbers of
-                # neighbors
-                # No infinite loops
-                if iteration > 100:
+                # Number of trials prior to discarding the hyperparameter chosen
+                # because it violates forbidden clauses
+                if iteration > 3:
                     break
-                elif np.isinf(num_neighbors_for_hp):
-                    if number_of_sampled_neighbors >= 1:
-                        break
-                    # TODO if code becomes slow remove the isinstance!
-                    # TODO vectorize better to reduce the amount of calls here!
-                    # TODO check the number of integer hyperparameters, might
-                    # be rather small...
-                    if isinstance(hp, UniformFloatHyperparameter):
-                        neighbor = hp.get_neighbors(
-                            value, random, number=1, std=stdev,
-                        )[0]
-                    else:
-                        neighbor = hp.get_neighbors(
-                            value, random, number=1,
-                        )[0]
-                else:
-                    if iteration > 0:
-                        break
-                    if hp_name not in finite_neighbors_stack:
-                        if isinstance(hp, UniformIntegerHyperparameter):
-                            neighbors = hp.get_neighbors(value, random,
-                                                         number=num_neighbors, std=stdev)
-                        else:
-                            neighbors = hp.get_neighbors(value, random)
+
+                if hp_name not in finite_neighbors_stack:
+                    if isinstance(hp, (UniformIntegerHyperparameter, UniformFloatHyperparameter)):
+                        neighbors = hp.get_neighbors(value, random,
+                                                     number=num_neighbors, std=stdev)
                         random.shuffle(neighbors)
-                        finite_neighbors_stack[hp_name] = neighbors
+                    elif np.isinf(num_neighbors_for_hp):
+                        neighbors = hp.get_neighbors(
+                            value, random, number=num_neighbors,
+                        )
                     else:
-                        neighbors = finite_neighbors_stack[hp_name]
-                    neighbor = neighbors.pop()
+                        neighbors = hp.get_neighbors(value, random)
+                        random.shuffle(neighbors)
+                    finite_neighbors_stack[hp_name] = neighbors
+                else:
+                    neighbors = finite_neighbors_stack[hp_name]
+
+                neighbor = neighbors.pop()
 
                 # Check all newly obtained neigbors
                 new_array = array.copy()  # type: np.ndarray
@@ -193,17 +177,19 @@ def get_one_exchange_neighbourhood(
                     # Only rigorously check every tenth configuration (
                     # because moving around in the neighborhood should
                     # just work!)
-                    if np.random.random() > 0.95:
+                    if np.random.random() > 0.99:
                         new_configuration.is_valid_configuration()
                     else:
                         configuration_space._check_forbidden(new_array)
                     neighbourhood.append(new_configuration)
                 except ForbiddenValueError as e:
-                    pass
+                    n_neighbors_per_hp[hp_name] -= 1
+                    if n_neighbors_per_hp[hp_name] == 0:
+                        break
 
                 iteration += 1
                 if len(neighbourhood) > 0:
-                    number_of_sampled_neighbors += 1
+                    break
 
             # Some infinite loop happened and no valid neighbor was found OR
             # no valid neighbor is available for a categorical
