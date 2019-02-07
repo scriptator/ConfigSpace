@@ -71,26 +71,26 @@ class UtilTest(unittest.TestCase):
 
     def _test_get_one_exchange_neighbourhood(self, hp):
         cs = ConfigurationSpace()
-        num_neighbors = 0
+        num_neighbors = []
         if not isinstance(hp, list):
             hp = [hp]
         for hp_ in hp:
             cs.add_hyperparameter(hp_)
-            if np.isinf(hp_.get_num_neighbors()):
-                num_neighbors += 4
-            else:
-                num_neighbors += hp_.get_num_neighbors()
 
         cs.seed(1)
         config = cs.get_default_configuration()
         all_neighbors = []
         for i in range(100):
             neighborhood = get_one_exchange_neighbourhood(config, i)
+            num_neighbors_tmp = 0
             for new_config in neighborhood:
                 self.assertNotEqual(config, new_config)
                 all_neighbors.append(new_config)
+                num_neighbors_tmp += 1
+            num_neighbors.append(num_neighbors_tmp)
 
-        return all_neighbors
+        np.testing.assert_array_almost_equal(num_neighbors[0], num_neighbors)
+        return all_neighbors, num_neighbors[0]
 
     def test_random_neighbor_float(self):
         hp = UniformFloatHyperparameter('a', 1, 10)
@@ -100,12 +100,14 @@ class UtilTest(unittest.TestCase):
 
     def test_random_neighborhood_float(self):
         hp = UniformFloatHyperparameter('a', 1, 10)
-        all_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        all_neighbors, n_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        self.assertEqual(n_neighbors, 4)
         all_neighbors = [neighbor['a'] for neighbor in all_neighbors]
         self.assertAlmostEqual(5.44, np.mean(all_neighbors), places=2)
         self.assertAlmostEqual(3.065,  np.var(all_neighbors), places=2)
         hp = UniformFloatHyperparameter('a', 1, 10, log=True)
-        all_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        all_neighbors, n_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        self.assertEqual(n_neighbors, 4)
         all_neighbors = [neighbor['a'] for neighbor in all_neighbors]
         # Default value is 3.16
         self.assertAlmostEqual(3.45, np.mean(all_neighbors), places=2)
@@ -119,20 +121,48 @@ class UtilTest(unittest.TestCase):
 
     def test_random_neighborhood_int(self):
         hp = UniformIntegerHyperparameter('a', 1, 10)
-        all_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        all_neighbors, n_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        self.assertEqual(n_neighbors, 4)
         all_neighbors = [neighbor['a'] for neighbor in all_neighbors]
-        self.assertAlmostEqual(5.79, np.mean(all_neighbors), places=2)
-        self.assertAlmostEqual(4.99, np.var(all_neighbors), places=2)
+        self.assertAlmostEqual(5.81, np.mean(all_neighbors), places=2)
+        self.assertAlmostEqual(5.60, np.var(all_neighbors), places=2)
+
+        # Log
         hp = UniformIntegerHyperparameter('a', 1, 10, log=True)
-        all_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        all_neighbors, n_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        self.assertEqual(n_neighbors, 4)
         all_neighbors = [neighbor['a'] for neighbor in all_neighbors]
-        # Default value is 3.16
-        self.assertAlmostEqual(3.55, np.mean(all_neighbors), places=2)
+        self.assertAlmostEqual(3.94, np.mean(all_neighbors), places=2)
         self.assertAlmostEqual(5.91, np.var(all_neighbors), places=2)
+
+        # Corner cases
+        hp = UniformIntegerHyperparameter('a', 1, 5)
+        all_neighbors, n_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        self.assertEqual(n_neighbors, 4)
+        all_neighbors = [neighbor['a'] for neighbor in all_neighbors]
+        self.assertAlmostEqual(3.0, np.mean(all_neighbors), places=2)
+
+        hp = UniformIntegerHyperparameter('a', 1, 4)
+        all_neighbors, n_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        self.assertEqual(n_neighbors, 3)
+        all_neighbors = [neighbor['a'] for neighbor in all_neighbors]
+        self.assertAlmostEqual(2.666, np.mean(all_neighbors), places=2)
+
+        hp = UniformIntegerHyperparameter('a', 1, 3)
+        all_neighbors, n_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        self.assertEqual(n_neighbors, 2)
+        all_neighbors = [neighbor['a'] for neighbor in all_neighbors]
+        self.assertAlmostEqual(2, np.mean(all_neighbors), places=2)
+
+        hp = UniformIntegerHyperparameter('a', 1, 2)
+        all_neighbors, n_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        self.assertEqual(n_neighbors, 1)
+        all_neighbors = [neighbor['a'] for neighbor in all_neighbors]
+        self.assertAlmostEqual(1, np.mean(all_neighbors), places=2)
 
     def test_random_neighbor_cat(self):
         hp = CategoricalHyperparameter('a', [5, 6, 7, 8])
-        all_neighbors = self._test_get_one_exchange_neighbourhood(hp)
+        all_neighbors, _ = self._test_get_one_exchange_neighbourhood(hp)
         all_neighbors = [neighbor for neighbor in all_neighbors]
         self.assertEqual(len(all_neighbors), 300) # 3 (neighbors) * 100 (samples)
 

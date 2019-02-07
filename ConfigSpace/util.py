@@ -81,7 +81,7 @@ def get_one_exchange_neighbourhood(
         seed: int,
         num_neighbors: int=4,
         stdev: float=0.2,
-    ) -> Generator[Configuration]:
+    ) -> Generator[Configuration, None, None]:
     """Return all configurations in a one-exchange neighborhood.
 
     The method is implemented as defined by:
@@ -92,34 +92,51 @@ def get_one_exchange_neighbourhood(
     random = np.random.RandomState(seed)
     hyperparameters_list = list(
         list(configuration.configuration_space._hyperparameters.keys())
-    )
-    hyperparameters_list_length = len(hyperparameters_list)
+    )  # type: List[str]
+    # List of exhausted hyperparameters
     hyperparameters_used = [hp.name for hp in configuration.configuration_space.get_hyperparameters()
                             if hp.get_num_neighbors(configuration.get(hp.name)) == 0 and configuration.get(hp.name) is not None]
     number_of_usable_hyperparameters = sum(np.isfinite(configuration.get_array()))
-    n_neighbors_per_hp = {
-        hp.name: num_neighbors if np.isinf(hp.get_num_neighbors(configuration.get(hp.name))) else hp.get_num_neighbors(configuration.get(hp.name))
-        for hp in configuration.configuration_space.get_hyperparameters()
-    }
+
+    n_neighbors_per_hp = {}
+    active_hyperparameter_indices = []
+    for hp in configuration.configuration_space.get_hyperparameters():
+        hp_value = configuration.get(hp.name)
+        if hp_value is None:
+            continue
+        else:
+            n_neighbors_tmp = hp.get_num_neighbors(configuration.get(hp.name))
+            if n_neighbors_tmp > 0:
+                if isinstance(hp, UniformIntegerHyperparameter):
+                    n_neighbors_tmp = min(n_neighbors_tmp, num_neighbors)
+                elif np.isinf(n_neighbors_tmp):
+                    n_neighbors_tmp = num_neighbors
+                else:
+                    n_neighbors_tmp = n_neighbors_tmp
+                n_neighbors_per_hp[hp.name] = n_neighbors_tmp
+                active_hyperparameter_indices.append(
+                    configuration.configuration_space.get_idx_by_hyperparameter_name(hp.name)
+                )
 
     finite_neighbors_stack = {}  # type: Dict
     configuration_space = configuration.configuration_space  # type: ConfigSpace
 
+    # Setting up some variables
+    array = configuration.get_array()  # type: np.ndarray
+    neighbor = 0  # type: float
+    iteration = 0  # type: int
+
     while len(hyperparameters_used) < number_of_usable_hyperparameters:
-        index = int(random.randint(hyperparameters_list_length))
-        hp_name = hyperparameters_list[index]
-        if n_neighbors_per_hp[hp_name] == 0:
+        index = random.choice(active_hyperparameter_indices)  # type: int
+        hp_name = hyperparameters_list[index]  # type: str
+        if n_neighbors_per_hp.get(hp_name, 0) == 0:
             continue
 
         else:
-            neighbourhood = []
-            number_of_sampled_neighbors = 0
-            array = configuration.get_array()  # type: np.ndarray
-            value = array[index]  # type: float
+            neighbourhood = []  # type: List
+            number_of_sampled_neighbors = 0  # type: int
 
-            # Check for NaNs (inactive value)
-            if value != value:
-                continue
+            value = array[index]  # type: float
 
             iteration = 0
             hp = configuration_space.get_hyperparameter(hp_name)  # type: Hyperparameter
@@ -127,26 +144,33 @@ def get_one_exchange_neighbourhood(
             while True:
                 # Obtain neigbors differently for different possible numbers of
                 # neighbors
-                if num_neighbors_for_hp == 0:
-                    break
                 # No infinite loops
-                elif iteration > 100:
+                if iteration > 100:
                     break
                 elif np.isinf(num_neighbors_for_hp):
                     if number_of_sampled_neighbors >= 1:
                         break
                     # TODO if code becomes slow remove the isinstance!
-                    if isinstance(hp, (UniformFloatHyperparameter, UniformIntegerHyperparameter)):
-                        neighbor = hp.get_neighbors(value, random,
-                                                    number=1, std=stdev)[0]
+                    # TODO vectorize better to reduce the amount of calls here!
+                    # TODO check the number of integer hyperparameters, might
+                    # be rather small...
+                    if isinstance(hp, UniformFloatHyperparameter):
+                        neighbor = hp.get_neighbors(
+                            value, random, number=1, std=stdev,
+                        )[0]
                     else:
-                        neighbor = hp.get_neighbors(value, random,
-                                                    number=1)[0]
+                        neighbor = hp.get_neighbors(
+                            value, random, number=1,
+                        )[0]
                 else:
                     if iteration > 0:
                         break
                     if hp_name not in finite_neighbors_stack:
-                        neighbors = hp.get_neighbors(value, random)
+                        if isinstance(hp, UniformIntegerHyperparameter):
+                            neighbors = hp.get_neighbors(value, random,
+                                                         number=num_neighbors, std=stdev)
+                        else:
+                            neighbors = hp.get_neighbors(value, random)
                         random.shuffle(neighbors)
                         finite_neighbors_stack[hp_name] = neighbors
                     else:
@@ -154,7 +178,7 @@ def get_one_exchange_neighbourhood(
                     neighbor = neighbors.pop()
 
                 # Check all newly obtained neigbors
-                new_array = array.copy()
+                new_array = array.copy()  # type: np.ndarray
                 new_array = ConfigSpace.c_util.change_hp_value(
                     configuration_space=configuration_space,
                     configuration_array=new_array,
@@ -187,6 +211,7 @@ def get_one_exchange_neighbourhood(
                 hyperparameters_used.append(hp_name)
                 n_neighbors_per_hp[hp_name] = 0
                 hyperparameters_used.append(hp_name)
+                active_hyperparameter_indices.remove(index)
             else:
                 if hp_name not in hyperparameters_used:
                     n_ = neighbourhood.pop()
@@ -326,20 +351,20 @@ def fix_types(configuration: dict,
     '''
         iterates over all hyperparameters in the ConfigSpace
         and fixes the types of the parameter values in configuration.
-    
+
         Arguments
         ---------
         configuration: dict
             param name -> param value
         configuration_space: ConfigurationSpace
             Configuration space which knows the types for all parameter values
-            
+
         Returns
         -------
         configuration: dict
             with fixed types of parameter values
     '''
-    
+
     for param in configuration_space.get_hyperparameters():
         param_name = param.name
         if configuration.get(param_name) is not None:

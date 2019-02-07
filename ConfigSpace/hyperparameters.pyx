@@ -209,8 +209,7 @@ cdef class NumericalHyperparameter(Hyperparameter):
     def has_neighbors(self) -> bool:
         return True
 
-    def get_num_neighbors(self, value=None) -> float:
-
+    def get_num_neighbors(self, value=None) -> int:
         return np.inf
 
     cpdef int compare(self, value: Union[int, float, str], value2: Union[int, float, str]):
@@ -716,6 +715,12 @@ cdef class UniformIntegerHyperparameter(IntegerHyperparameter):
         else:
             return False
 
+    def get_num_neighbors(self, value=None) -> int:
+        # Do not increment by one because the current value is not a neighbor
+        # Example: lower: 2, upper: 5, current: 3
+        # neighbors are 2, 4, 5 -> 3
+        return self.upper - self.lower
+
     def get_neighbors(
         self,
         value: Union[int, float],
@@ -723,30 +728,40 @@ cdef class UniformIntegerHyperparameter(IntegerHyperparameter):
         number: int=4,
         transform: bool=False,
         std: float=0.2,
-    ) -> List[
-        int]:
-        neighbors = []  # type: List[int]
+    ) -> List[int]:
+        neighbors = set()  # type: Set[int]
+
+        if self.upper - self.lower < number:
+            # implicit -1 because there's already one value which is no longer a neighbor
+            int_value = self._transform(value)
+            for i in range(self.lower, self.upper + 1):
+                if i != int_value:
+                    if transform:
+                        neighbors.add(i)
+                    else:
+                        neighbors.add(self._inverse_transform(i))
+            return list(neighbors)
+
         while len(neighbors) < number:
-            rejected = True  # type: bool
             iteration = 0  # type: int
-            while rejected:
-                new_min_value = np.min([1, rs.normal(loc=value, scale=std)])
-                new_value = np.max((0, new_min_value))
+            while True:
+                new_value = rs.normal(loc=value, scale=std)
+                if new_value < 0 or new_value > 1:
+                    continue
                 int_value = self._transform(value)
                 new_int_value = self._transform(new_value)
                 if int_value != new_int_value:
-                    rejected = False
+                    break
                 elif iteration > 100000:
                     raise ValueError('Probably caught in an infinite loop.')
 
             if transform:
-                neighbors.append(self._transform(new_value))
+                candidate = new_int_value
             else:
-                new_value = self._transform(new_value)
-                new_value = self._inverse_transform(new_value)
-                neighbors.append(new_value)
+                candidate = self._inverse_transform(new_int_value)
+            neighbors.add(candidate)
 
-        return neighbors
+        return list(neighbors)
 
 
 cdef class NormalIntegerHyperparameter(IntegerHyperparameter):
