@@ -299,10 +299,12 @@ cpdef np.ndarray change_hp_value(
     # Activate hyperparameters if their parent node got activated
     children = children_of[hp_name]
     if len(children) > 0:
+        # to visit cannot be declared with cdef because it is not a type
+        # identifier...
         to_visit = deque()  # type: deque
         to_visit.extendleft(children)
-        visited = set()  # type: Set[str]
-        activated_values = dict()  # type: Dict[str, Union[int, float, str]]
+        visited = set()
+        activated_values = dict()
 
         while len(to_visit) > 0:
             current = to_visit.pop()
