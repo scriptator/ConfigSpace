@@ -14,6 +14,9 @@ ctypedef np.float_t DTYPE_t
 
 from libc.stdlib cimport malloc, free
 
+import cython
+cimport cython
+
 from ConfigSpace.exceptions import ForbiddenValueError
 from ConfigSpace.forbidden import AbstractForbiddenComponent
 
@@ -25,6 +28,9 @@ from ConfigSpace.conditions import ConditionComponent
 from ConfigSpace.conditions cimport ConditionComponent
 
 
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+@cython.initializedcheck(False)  # Turn off check that memory views are initialized
 cpdef int check_forbidden(list forbidden_clauses, np.ndarray vector) except 1:
     cdef int I = len(forbidden_clauses)
     cdef AbstractForbiddenComponent clause
@@ -35,6 +41,9 @@ cpdef int check_forbidden(list forbidden_clauses, np.ndarray vector) except 1:
             raise ForbiddenValueError("Given vector violates forbidden clause %s" % (str(clause)))
 
 
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+@cython.initializedcheck(False)  # Turn off check that memory views are initialized
 cpdef int check_configuration(
     self,
     np.ndarray vector,
@@ -138,6 +147,9 @@ cpdef int check_configuration(
     self._check_forbidden(vector)
 
 
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+@cython.initializedcheck(False)  # Turn off check that memory views are initialized
 cpdef np.ndarray correct_sampled_array(
     np.ndarray[DTYPE_t, ndim=1] vector,
     list forbidden_clauses_unconditionals,
@@ -244,9 +256,12 @@ cpdef np.ndarray correct_sampled_array(
     return vector
 
 
-cpdef np.ndarray change_hp_value(
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+@cython.initializedcheck(False)  # Turn off check that memory views are initialized
+cpdef double[:] change_hp_value(
     configuration_space,
-    np.ndarray[DTYPE_t, ndim=1] configuration_array,
+    double[:] configuration_array,
     str hp_name,
     DTYPE_t hp_value,
     int index,
@@ -276,6 +291,7 @@ cpdef np.ndarray change_hp_value(
     cdef Hyperparameter current
     cdef str current_name
     cdef list disabled
+    cdef int idx
     cdef set visited
     cdef dict activated_values
     cdef int active
@@ -290,8 +306,11 @@ cpdef np.ndarray change_hp_value(
     cdef set to_disable
     cdef DTYPE_t NaN = np.NaN
     cdef dict children_of = configuration_space._children_of
+    cdef double[:] configuration_array_2 = configuration_array
 
-    configuration_array[index] = hp_value
+    # TODO replace string-based access to config space by index based access!
+
+    configuration_array_2[index] = hp_value
 
     # Hyperparameters which are going to be set to inactive
     disabled = []
@@ -316,19 +335,20 @@ cpdef np.ndarray change_hp_value(
                 continue
 
             current_idx = configuration_space._hyperparameter_idx[current_name]
-            current_value = configuration_array[current_idx]
+            current_value = configuration_array_2[current_idx]
 
             conditions = configuration_space._parent_conditions_of[current_name]
 
             active = True
             for condition in conditions:
-                if not condition._evaluate_vector(configuration_array):
+                #print(condition)
+                if not condition._evaluate_vector(configuration_array_2):
                     active = False
                     break
 
             if active and not current_value == current_value:
                 default_value = current.normalized_default_value
-                configuration_array[current_idx] = default_value
+                configuration_array_2[current_idx] = default_value
                 children_ = children_of[current_name]
                 if len(children_) > 0:
                     to_visit.extendleft(children_)
@@ -336,7 +356,7 @@ cpdef np.ndarray change_hp_value(
             # If the hyperparameter was made inactive,
             # all its children need to be deactivade as well
             if not active and current_value == current_value:
-                configuration_array[current_idx] = NaN
+                configuration_array_2[current_idx] = NaN
 
                 children = children_of[current_name]
 
@@ -354,6 +374,6 @@ cpdef np.ndarray change_hp_value(
                             to_disable.add(ch.name)
 
     for idx in disabled:
-        configuration_array[idx] = NaN
+        configuration_array_2[idx] = NaN
 
-    return configuration_array
+    return configuration_array_2

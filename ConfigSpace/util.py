@@ -189,6 +189,7 @@ def get_one_exchange_neighbourhood(
                     hp_name=hp_name,
                     hp_value=neighbor,
                     index=index)
+                new_array = np.asarray(new_array)
                 try:
                     # Populating a configuration from an array does not check
                     #  if it is a legal configuration - check this (slow)

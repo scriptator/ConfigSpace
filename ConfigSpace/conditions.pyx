@@ -34,6 +34,8 @@ import operator
 
 from libc.stdlib cimport malloc, free
 
+import cython
+cimport cython
 import numpy as np
 cimport numpy as np
 
@@ -84,7 +86,7 @@ cdef class ConditionComponent(object):
     def evaluate_vector(self, instantiated_vector):
         return bool(self._evaluate_vector(instantiated_vector))
 
-    cdef int _evaluate_vector(self, np.ndarray value):
+    cdef int _evaluate_vector(self, double[:] value):
         pass
 
     def __hash__(self) -> int:
@@ -162,7 +164,10 @@ cdef class AbstractCondition(ConditionComponent):
         hp_name = self.parent.name
         return self._evaluate(instantiated_parent_hyperparameter[hp_name])
 
-    cdef int _evaluate_vector(self, np.ndarray instantiated_vector):
+    @cython.boundscheck(False) # turn off bounds-checking for entire function
+    @cython.wraparound(False)  # turn off negative index wrapping for entire function
+    @cython.initializedcheck(False)  # Turn off check that memory views are initialized
+    cdef int _evaluate_vector(self, double[:] instantiated_vector):
         if self.parent_vector_id is None:
             raise ValueError("Parent vector id should not be None when calling evaluate vector")
         return self._inner_evaluate_vector(instantiated_vector[self.parent_vector_id])
@@ -528,7 +533,10 @@ cdef class AbstractConjunction(ConditionComponent):
         free(arrptr)
         return rval
 
-    cdef int _evaluate_vector(self, np.ndarray instantiated_vector):
+    @cython.boundscheck(False) # turn off bounds-checking for entire function
+    @cython.wraparound(False)  # turn off negative index wrapping for entire function
+    @cython.initializedcheck(False)  # Turn off check that memory views are initialized
+    cdef int _evaluate_vector(self, double[:] instantiated_vector):
         cdef ConditionComponent component
         cdef int e
         cdef int rval
@@ -569,7 +577,10 @@ cdef class AndConjunction(AbstractConjunction):
         retval.write(")")
         return retval.getvalue()
 
-    cdef int _evaluate_vector(self, np.ndarray instantiated_vector):
+    @cython.boundscheck(False) # turn off bounds-checking for entire function
+    @cython.wraparound(False)  # turn off negative index wrapping for entire function
+    @cython.initializedcheck(False)  # Turn off check that memory views are initialized
+    cdef int _evaluate_vector(self, double[:] instantiated_vector):
         cdef ConditionComponent component
         cdef int e
 
@@ -611,7 +622,10 @@ cdef class OrConjunction(AbstractConjunction):
                 return 1
         return 0
 
-    cdef int _evaluate_vector(self, np.ndarray instantiated_vector):
+    @cython.boundscheck(False) # turn off bounds-checking for entire function
+    @cython.wraparound(False)  # turn off negative index wrapping for entire function
+    @cython.initializedcheck(False)  # Turn off check that memory views are initialized
+    cdef int _evaluate_vector(self, double[:] instantiated_vector):
         cdef ConditionComponent component
         cdef int e
 

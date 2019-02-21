@@ -12,4 +12,4 @@ ctypedef np.float_t DTYPE_t
 
 
 cdef class ConditionComponent(object):
-    cdef int _evaluate_vector(self, np.ndarray value)
+    cdef int _evaluate_vector(self, double[:] value)
